@@ -19,8 +19,8 @@ cfders_top_spp_func<- function(input.data, top.n, port.name) {
   # For debugging
   if(FALSE){
     input.data = cfders.by.spp
-    top.n = 6
-    port.name = jgs.ports[2]
+    top.n = 1
+    port.name = jgs.ports[1]
   }
   
   # Read in dataset and then calculate the sum (sum of Mean??) landed value over the 2011-2015 baseline
@@ -107,24 +107,38 @@ econ_top_spp_gear_func<- function(input.data, top.n, port.name) {
   
   # For debugging
   if(FALSE){
-    input.data = econ.results
-    top.n = 10
+    input.data = econ.results.new
+    top.n = 4
     port.name = jgs.ports[1]
   }
   
-  # Read in dataset and then calculate the sum (sum of land_Value) landed value for each scenario across all gear types
-  total.landings<- input.data %>%
-    filter(., jgs == port.name) %>%
+  # Read in dataset and then calculate the sum (sum of land_Value) landed value for each scenario across all gear types. For total landings, we need to do the baseline and calibration test DIFFERENTLY as these cannot include the extended footprint fishing landings.
+  total.landings.basecalib<- input.data %>%
+    filter(., jgs == port.name & footprint == "base") %>%
+    filter(., scenario == "baseline" | scenario == "calibration_test" ) %>%
+    # Group by alternative species grouping, with groundfish all together, then calculate the communty-species group total mean spp value
+    group_by(., jgs, scenario, footprint, gear, spp.alt) %>%
+    summarise(TotalLandedValue = sum(land_value))
+  
+  total.landings.other<- input.data %>%
+    filter(., jgs == port.name & scenario != "baseline" & scenario != "calibration_test") %>%
     # Group by alternative species grouping, with groundfish all together, then calculate the communty-species group total mean spp value
     group_by(., jgs, scenario, footprint, gear, spp.alt) %>%
     summarise(TotalLandedValue = sum(land_value)) 
   
+  total.landings<- bind_rows(total.landings.basecalib, total.landings.other) %>%
+    ungroup() %>%
+    dplyr::select(., -footprint)
+
   # Get data for only the top.n species and return it in nested data frame (by footprint, gear, scenario)
-  out<- total.landings %>%
-    group_by(., jgs, scenario, footprint, gear) %>%
-    top_n(., top.n, TotalLandedValue) %>%
+  top.spp<- total.landings %>%
+    group_by(., jgs, scenario, gear) %>%
+    top_n(., top.n, TotalLandedValue) 
+  
+  out<- top.spp %>%
+    ungroup() %>%
     left_join(., cfders.nice.names, by = c("jgs" = "jgs", "spp.alt" = "spp.top")) %>%
-    group_by(., jgs, scenario, footprint, gear) %>%
+    group_by(., jgs, scenario, gear) %>%
     nest(., .key = "TopSpeciesData")
   
   return(out)
@@ -279,8 +293,8 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
   
   # Debugging
   if(FALSE){
-    data = econ.top
-    type = "econ"
+    data = econ.gear.top
+    type = "econ.gear"
     scenarios = c("baseline", "calibration_test", "no_adaptation", "area+gear+species")
     scenarios = c("area+gear+species")
     spp.modeled = spp.modeled
@@ -480,7 +494,7 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
       dat.check<- is.null(plot.dat$TopSpeciesData[[1]])
       
       if(dat.check){
-        res[[j]]<- plot.out
+        res[[j]]<- NA
         names(res)[j]<- plot.title
         print(paste(plot.title, " row ", j, " is done!"))
         next()

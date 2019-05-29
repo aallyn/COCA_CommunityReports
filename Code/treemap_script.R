@@ -45,15 +45,21 @@ cfders.by.spp <- cfders.by.spp %>%
                                 !spp_common_name %in% cfders.nemulti ~ as.character(spp_common_name)))
 
 # Next, for page 2 (ecology page) fill is going to be based on projected distribution changes. So, need to read in that file and then deal with any infinite percent increases
-cfders.spp.impact<- read.csv(paste(summary.data.path, "SpeciesCommunityChangesLandings_03032019.csv", sep = ""))
+#cfders.spp.impact<- read.csv(paste(summary.data.path, "SpeciesCommunityChangesLandings_03032019.csv", sep = ""))
+cfders.spp.impact<- read.csv(paste(summary.data.path, "SpeciesCommunityCFDERSWeightedChanges.csv", sep = ""))
 
-pt.jud<- cfders.spp.impact %>% 
-  filter(., Community == "POINT JUDITH_RI") %>%
-  dplyr::select(., -X, -X1)
-write.csv(pt.jud, "~/Desktop/PointJudith_SpeciesChangesandLandingsData.csv")
+stone<- cfders.spp.impact %>% 
+  filter(., Community == "STONINGTON_ME") %>%
+  dplyr::select(., -X)
+write.csv(stone, "~/Desktop/Stone_SpeciesChangesandLandingsData_05292019.csv")
+
+focal.comms<- cfders.spp.impact %>% 
+  filter(., Community %in% c("STONINGTON_ME", "PORTLAND_ME", "NEW BEDFORD_MA", "POINT JUDITH_RI")) %>%
+  dplyr::select(., -X)
+write.csv(focal.comms, "~/Desktop/FocalCommunities_SpeciesChangesandLandingsData_05292019.csv")
 
 all.out<- cfders.spp.impact %>% 
-  dplyr::select(., -X, -X1)
+  dplyr::select(., -X)
 write.csv(all.out, "~/Desktop/AllPorts_SpeciesChangesandLandingsData.csv")
 
 # Change infinite to NA?
@@ -120,7 +126,8 @@ colnames(cfders.nice.names)[1]<- "jgs"
 # Data set creation, includes top species and then treemap fill function -------------------------------------------------------
 # Focal communities
 jgs.ports <- c("STONINGTON_ME" ,"PORTLAND_ME", "NEW BEDFORD_MA", "POINT JUDITH_RI")
-top.n<- c(1, 7, 6, 10)
+sdm.top.n<- c(1, 7, 6, 10)
+econ.top.n<- c(4, 10, 10, 10)
 
 # Setting output directories
 graphic.folder <- "C:/Users/bkennedy/Dropbox/COCA community report graphics/"
@@ -143,13 +150,13 @@ for(i in seq_along(jgs.ports)){
     distinct()
   
   # Alring, now top species for sdm and then for the econ data
-  sdm.top<- cfders_top_spp_func(input.data = cfders.by.spp, top.n = top.n[i], port.name = jgs.ports[i])
+  sdm.top<- cfders_top_spp_func(input.data = cfders.by.spp, top.n = sdm.top.n[i], port.name = jgs.ports[i])
   
   # Now, econ
-  econ.top<- econ_top_spp_func(input.data = econ.results.new, top.n = 10, port.name = jgs.ports[i])
+  econ.top<- econ_top_spp_func(input.data = econ.results.new, top.n = econ.top.n[i], port.name = jgs.ports[i])
   
   # Now, econ and new results by gear
-  econ.gear.top<- econ_top_spp_gear_func(input.data = econ.results.new, top.n = 10, port.name = jgs.ports[i])
+  econ.gear.top<- econ_top_spp_gear_func(input.data = econ.results.new, econ.top.n[i], port.name = jgs.ports[i])
   
   # Next, need to fill in the data to account for species that we did not model BUT that are important to the landings in the port. This only comes into play for the sdm 
   sdm.filled<- sdm_fill_func(model.dat = cfders.spp.impact, top.spp.dat = sdm.top, port.name = jgs.ports[i], scenario.name = "Future_mean_percdiff.combo.b")
@@ -185,9 +192,13 @@ for(i in seq_along(jgs.ports)){
   econ.changes.gear.plot<- treemap_fill_plot(econ.gear.top, type = "econ.gear")
   
   # Write each of these out
-  econ.all.out.dir<- "~/Desktop/AllEcon/"
-  lapply(seq_along(econ.changes.gear.plot), 
-    function(x) ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(names(econ.changes.gear.plot)[x], ".png", sep = "")), plot = econ.changes.gear.plot[[x]], width = 9, height = 3, units = "in"))
+  for(m in seq_along(econ.changes.gear.plot)){
+    if(is.na(econ.changes.gear.plot[[m]])){
+      next()
+    } else {
+      ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(names(econ.changes.gear.plot)[m], ".png", sep = "")), plot = econ.changes.gear.plot[[m]], width = 9, height = 3, units = "in")
+    }
+  }
 }
 
 
