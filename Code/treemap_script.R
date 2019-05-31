@@ -48,19 +48,21 @@ cfders.by.spp <- cfders.by.spp %>%
 #cfders.spp.impact<- read.csv(paste(summary.data.path, "SpeciesCommunityChangesLandings_03032019.csv", sep = ""))
 cfders.spp.impact<- read.csv(paste(summary.data.path, "SpeciesCommunityCFDERSWeightedChanges.csv", sep = ""))
 
-stone<- cfders.spp.impact %>% 
-  filter(., Community == "STONINGTON_ME") %>%
-  dplyr::select(., -X)
-write.csv(stone, "~/Desktop/Stone_SpeciesChangesandLandingsData_05292019.csv")
-
-focal.comms<- cfders.spp.impact %>% 
-  filter(., Community %in% c("STONINGTON_ME", "PORTLAND_ME", "NEW BEDFORD_MA", "POINT JUDITH_RI")) %>%
-  dplyr::select(., -X)
-write.csv(focal.comms, "~/Desktop/FocalCommunities_SpeciesChangesandLandingsData_05292019.csv")
-
-all.out<- cfders.spp.impact %>% 
-  dplyr::select(., -X)
-write.csv(all.out, "~/Desktop/AllPorts_SpeciesChangesandLandingsData.csv")
+if(FALSE){
+  stone<- cfders.spp.impact %>% 
+    filter(., Community == "STONINGTON_ME") %>%
+    dplyr::select(., -X)
+  write.csv(stone, "~/Desktop/Stone_SpeciesChangesandLandingsData_05292019.csv")
+  
+  focal.comms<- cfders.spp.impact %>% 
+    filter(., Community %in% c("STONINGTON_ME", "PORTLAND_ME", "NEW BEDFORD_MA", "POINT JUDITH_RI")) %>%
+    dplyr::select(., -X)
+  write.csv(focal.comms, "~/Desktop/FocalCommunities_SpeciesChangesandLandingsData_05292019.csv")
+  
+  all.out<- cfders.spp.impact %>% 
+    dplyr::select(., -X)
+  write.csv(all.out, "~/Desktop/AllPorts_SpeciesChangesandLandingsData.csv")
+}
 
 # Change infinite to NA?
 inf.df<- cfders.spp.impact[is.infinite(cfders.spp.impact$ProjectionValue),]
@@ -126,8 +128,8 @@ colnames(cfders.nice.names)[1]<- "jgs"
 # Data set creation, includes top species and then treemap fill function -------------------------------------------------------
 # Focal communities
 jgs.ports <- c("STONINGTON_ME" ,"PORTLAND_ME", "NEW BEDFORD_MA", "POINT JUDITH_RI")
-sdm.top.n<- c(1, 7, 6, 10)
-econ.top.n<- c(4, 10, 10, 10)
+sdm.top.n<- c(10, 7, 6, 10)
+econ.top.n<- c(1, 10, 10, 10)
 
 # Setting output directories
 graphic.folder <- "C:/Users/bkennedy/Dropbox/COCA community report graphics/"
@@ -162,44 +164,131 @@ for(i in seq_along(jgs.ports)){
   sdm.filled<- sdm_fill_func(model.dat = cfders.spp.impact, top.spp.dat = sdm.top, port.name = jgs.ports[i], scenario.name = "Future_mean_percdiff.combo.b")
   
   # Now all the treemaps...
+  treemap.width<- 4.5
+  treemap.height<- 2
   # Value plot -- page 1
-  val.plot<- treemap_value_plot(sdm.filled)
-  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_value.png"), val.plot, width = 4.5, height = 3, units = "in")
+  val.plot<- treemap_value_plot(sdm.filled, total.value = FALSE)
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_value.png"), val.plot, width = treemap.width, height = treemap.height, units = "in")
   
-  # SDM changes by baseline value -- page 2
+  # SDM changes by baseline value -- page 2.
+  # Treemap option first
   sdm.changes.plot<- treemap_fill_plot(sdm.filled, type = "sdm")
-  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_sdm.png"), sdm.changes.plot, width = 4.5, height = 3, units = "in")
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_sdm.png"), sdm.changes.plot, width = treemap.width, height = treemap.height, units = "in")
+  
+  # Barplot in case that didn't work
+  sdm.changes.barplot<- sdm_bar_plot(sdm.filled)
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "barplot_sdm.png"), sdm.changes.barplot, width = treemap.width, height = treemap.height, units = "in")
   
   # Economic results -- page 3 with multiple scenarios
   scenarios.use<- c("baseline", "calibration_test", "no_adaptation", "area+gear+species")
-  econ.changes.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled)
+  econ.changes.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled, final = FALSE)
   
   # Save each of em --
   for(l in seq_along(econ.changes.plot)){
-    ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste("treemap_", names(econ.changes.plot)[l], ".png", sep = "")), econ.changes.plot[[l]])
+    ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste("treemap_", names(econ.changes.plot)[l], ".png", sep = "")), width = treemap.width, height = treemap.height, econ.changes.plot[[l]])
   }
   
   # Combine into one plot?
-  all.econ.out<- plot_grid(plotlist = econ.changes.plot, align = "hv", labels = scenarios.use, nrow = 1, label_size = font.size)
-  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_allecon.pdf"), all.econ.out)
+  all.econ.out<- plot_grid(plotlist = econ.changes.plot, align = "h", nrow = 1, label_size = font.size-1, label_fontfamily = font.family)
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_allecon.png"), all.econ.out, width = 11, height = 8)
   
   # Economic Results, one off
   scenarios.use<- c("area+gear+species")
-  econ.changes.one.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled)
-  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(scenarios.use, "single_econ.png", sep = "")), plot = econ.changes.one.plot, width = 4.5, height = 3, units = "in")
+  econ.changes.one.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled, final = TRUE, treetext.minsize = 3)
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(scenarios.use, "final_econ.png", sep = "")), plot = econ.changes.one.plot[[1]], width = treemap.width, height = treemap.height, units = "in")
   
   # Economic results -- by gear
-  econ.changes.gear.plot<- treemap_fill_plot(econ.gear.top, type = "econ.gear")
+  econ.changes.gear.plot<- treemap_fill_plot(econ.gear.top, type = "econ.gear", final = FALSE)
   
   # Write each of these out
   for(m in seq_along(econ.changes.gear.plot)){
-    if(is.na(econ.changes.gear.plot[[m]])){
+    if(any(is.na(econ.changes.gear.plot[[m]]))){
+      print(m)
       next()
     } else {
       ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(names(econ.changes.gear.plot)[m], ".png", sep = "")), plot = econ.changes.gear.plot[[m]], width = 9, height = 3, units = "in")
+      dev.off()
     }
   }
 }
 
 
+
+
+
+
+
+
+
+
+
+# Problem ports!!! -------------------------------------------------------
+# Focal communities
+jgs.ports <- c("STONINGTON_ME")
+sdm.top.use<- 10
+econ.top.use<- 6
+
+# First, identify which species we have models for in the given port
+spp.modeled<- cfders.spp.impact %>% 
+  filter(Community == jgs.ports) %>%
+  drop_na(CFDERSCommonName) %>%
+  dplyr::select(., Community, CommonName, CFDERSCommonName) %>%
+  distinct(CFDERSCommonName) %>%
+  mutate(., spp.alt = case_when(CFDERSCommonName %in% cfders.nemulti ~ "N.E. Multispecies",
+                                !CFDERSCommonName %in% cfders.nemulti ~ as.character(CFDERSCommonName))) %>%
+  dplyr::select(., spp.alt) %>%
+  distinct()
+
+# Alring, now top species for sdm and then for the econ data
+sdm.top<- cfders_top_spp_func(input.data = cfders.by.spp, top.n = sdm.top.use, port.name = jgs.ports)
+
+# Now, econ
+econ.top<- econ_top_spp_func(input.data = econ.results.new, top.n = econ.top.use, port.name = jgs.ports)
+
+# Now, econ and new results by gear
+econ.gear.top<- econ_top_spp_gear_func(input.data = econ.results.new, econ.top.use, port.name = jgs.ports)
+
+# Next, need to fill in the data to account for species that we did not model BUT that are important to the landings in the port. This only comes into play for the sdm 
+sdm.filled<- sdm_fill_func(model.dat = cfders.spp.impact, top.spp.dat = sdm.top, port.name = jgs.ports, scenario.name = "Future_mean_percdiff.combo.b")
+
+# Now all the treemaps...
+# Value plot -- page 1
+val.plot<- treemap_value_plot(sdm.filled)
+ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_value.png"), val.plot, width = 4.5, height = 3, units = "in")
+
+
+ggsave(here(paste("Results/", jgs.ports, sep = ""), "sdm_bar.png"), sdm.bar, width = 4.5, height = 3, units = "in")
+
+
+# Economic results -- page 3 with multiple scenarios
+scenarios.use<- c("baseline", "calibration_test", "no_adaptation", "area+gear+species")
+econ.changes.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled)
+
+# Save each of em --
+for(l in seq_along(econ.changes.plot)){
+  ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste("treemap_", names(econ.changes.plot)[l], ".png", sep = "")), econ.changes.plot[[l]])
+}
+
+# Combine into one plot?
+all.econ.out<- plot_grid(plotlist = econ.changes.plot, align = "h", nrow = 1, label_size = font.size-1, label_fontfamily = font.family)
+ggsave(here(paste("Results/", jgs.ports[i], sep = ""), "treemap_allecon.png"), all.econ.out, width = 11, height = 8)
+
+# Economic Results, one off
+scenarios.use<- c("area+gear+species")
+econ.changes.one.plot<- treemap_fill_plot(econ.top, type = "econ", scenarios = scenarios.use, spp.modeled = spp.modeled, final = TRUE)
+ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(scenarios.use, "single_econ.png", sep = "")), plot = econ.changes.one.plot, width = 4.5, height = 3, units = "in")
+
+# Economic results -- by gear
+econ.changes.gear.plot<- treemap_fill_plot(econ.gear.top, type = "econ.gear")
+
+# Write each of these out
+for(m in seq_along(econ.changes.gear.plot)){
+  if(any(is.na(econ.changes.gear.plot[[m]]))){
+    print(m)
+    next()
+  } else {
+    ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(names(econ.changes.gear.plot)[m], ".png", sep = "")), plot = econ.changes.gear.plot[[m]], width = 9, height = 3, units = "in")
+    dev.off()
+  }
+}
 

@@ -117,35 +117,35 @@ econ_top_spp_gear_func<- function(input.data, top.n, port.name) {
     filter(., jgs == port.name & footprint == "base") %>%
     filter(., scenario == "baseline" | scenario == "calibration_test" ) %>%
     # Group by alternative species grouping, with groundfish all together, then calculate the communty-species group total mean spp value
-    group_by(., jgs, scenario, footprint, gear, spp.alt) %>%
+    dplyr::select(., -footprint) %>%
+    group_by(jgs, scenario, gear, spp.alt) %>%
     summarise(TotalLandedValue = sum(land_value))
   
   total.landings.other<- input.data %>%
     filter(., jgs == port.name & scenario != "baseline" & scenario != "calibration_test") %>%
     # Group by alternative species grouping, with groundfish all together, then calculate the communty-species group total mean spp value
-    group_by(., jgs, scenario, footprint, gear, spp.alt) %>%
+    dplyr::select(., -footprint) %>%
+    group_by(jgs, scenario, gear, spp.alt) %>%
     summarise(TotalLandedValue = sum(land_value)) 
   
   total.landings<- bind_rows(total.landings.basecalib, total.landings.other) %>%
     ungroup() %>%
-    dplyr::select(., -footprint)
+    mutate_if(is.factor, as.character)
 
   # Get data for only the top.n species and return it in nested data frame (by footprint, gear, scenario)
   top.spp<- total.landings %>%
-    group_by(., jgs, scenario, gear) %>%
+    group_by(jgs, scenario, gear) %>%
     top_n(., top.n, TotalLandedValue) 
   
   out<- top.spp %>%
-    ungroup() %>%
     left_join(., cfders.nice.names, by = c("jgs" = "jgs", "spp.alt" = "spp.top")) %>%
-    group_by(., jgs, scenario, gear) %>%
-    nest(., .key = "TopSpeciesData")
+    nest(., -jgs, -scenario, -gear, .key = "TopSpeciesData")
   
   return(out)
 }
 
 # Input missing species info for SDM and Econ results ---------------------
-sdm_fill_func<-  function(model.dat, top.spp.dat, port.name, scenario.name){
+sdm_fill_func<- function(model.dat, top.spp.dat, port.name, scenario.name){
   # Deatils: This function joins sdm model output data with full CFDERS landing dataset and arranges it as a suitable input dataset for treemaps. For aggregated categories (e.g., N.E. Multispecies and "Other"), aggregated valyes are calcualted by summing average values and averaging across species using weighted mean by average value. (Needs better explanation)
   
   # Args:
@@ -234,7 +234,7 @@ sdm_fill_func<-  function(model.dat, top.spp.dat, port.name, scenario.name){
 }
 
 # Treemap function: Value only, no independent fill variable --------------
-treemap_value_plot <- function(data){
+treemap_value_plot <- function(data, total.value = FALSE){
   # Deatils: This function joins model output data (either from the sdm or from the econ results) with full CFDERS landing dataset and arranges it as a suitable input dataset for treemaps. For aggregated categories (e.g., N.E. Multispecies and "Other"), aggregated valyes are calcualted by summing average values and averaging across species using weighted mean by average value. (Needs better explanation)
   
   # Args:
@@ -257,26 +257,64 @@ treemap_value_plot <- function(data){
     num.top<- 10
   }
   
-  ggplot(data, aes(area =mean.value, fill = mean.value, label = spp.nice)) + 
-    geom_treemap(alpha = .8, colour = "white", size = 2) +
-    geom_treemap_text(colour = "black", place = "topleft", reflow = T, alpha = .6,
-                      grow = FALSE, family = font.family, size = font.size, min.size = 3) +
-    theme_tufte() + 
-    scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""),
-                         breaks = c(min(data$mean.value), max(data$mean.value) / 2,  max(data$mean.value)), 
-                         labels = scales::dollar) +                                                            
-    theme(legend.position = "top", 
-          legend.key.width = unit(.5, "in"),
-          legend.key.height = unit(.1, "in"),
-          legend.title.align = .5,
-          text = element_text(family = font.family, size = font.size),
-          aspect.ratio = .5,
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(-5,-5,-5,-5))
+  if(total.value){
+    plot.temp<- ggplot(data, aes(area =mean.value, fill = mean.value, label = spp.nice)) + 
+      geom_treemap(alpha = .8, colour = "white", size = 2) +
+      geom_treemap_text(colour = "black", place = "topleft", reflow = T, alpha = .6,
+                        grow = FALSE, family = font.family, size = font.size, min.size = 3) +
+      theme_tufte() + 
+      scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""),
+                           breaks = c(min(data$mean.value), max(data$mean.value) / 2,  max(data$mean.value)), 
+                           labels = scales::dollar) +                                                            
+      theme(legend.position = "top", 
+            legend.key.width = unit(.5, "in"),
+            legend.key.height = unit(.1, "in"),
+            legend.title.align = .4,
+            text = element_text(family = font.family, size = font.size),
+            aspect.ratio = .5,
+            legend.margin=margin(0,0,0,0),
+            legend.box.margin=margin(-5,-5,-5,-5),
+            plot.margin = unit(c(1, 0, 2, 0), "cm"))
+    
+    plot.out<- plot.temp +
+      annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(data$mean.value)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = -0.1, ymax = -0.1, xmin = 0.5, xmax = 0.5)
+    
+    plot.out<- ggplot_gtable(ggplot_build(plot.out))
+    plot.out$layout$clip[plot.out$layout$name == "panel"]<- "off"
+    return(plot.out)
+    
+    # Some clean up
+    dev.off()
+    rm(plot.temp, plot.out)
+  } else {
+    plot.temp<- ggplot(data, aes(area =mean.value, fill = mean.value, label = spp.nice)) + 
+      geom_treemap(alpha = .8, colour = "white", size = 2) +
+      geom_treemap_text(colour = "black", place = "topleft", reflow = T, alpha = .6,
+                        grow = FALSE, family = font.family, size = font.size, min.size = 3) +
+      theme_tufte() + 
+      scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""),
+                           breaks = c(min(data$mean.value), max(data$mean.value) / 2,  max(data$mean.value)), 
+                           labels = scales::dollar) +                                                            
+      theme(legend.position = "top", 
+            legend.key.width = unit(.5, "in"),
+            legend.key.height = unit(.1, "in"),
+            legend.title.align = .5,
+            text = element_text(family = font.family, size = font.size),
+            aspect.ratio = .4,
+            legend.margin=margin(0,0,0,0),
+            legend.box.margin=margin(-5,-5,-5,-5))
+    
+    return(plot.temp)
+    
+    # Some clean up
+    dev.off()
+    rm(plot.temp, plot.out)
+  }
+  
 }
 
 # Treemap function: Value and independent fill variable -------------------
-treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration_test", "no_adaptation", "area", "gear", "species", "area+gear", "area+species", "area+gear", "area+gear+species"), spp.modeled = spp.modeled){
+treemap_fill_plot<- function(data, type, scenarios = c("baseline", "calibration_test", "no_adaptation", "area", "gear", "species", "area+gear", "area+species", "area+gear", "area+gear+species"), spp.modeled = spp.modeled, final, treetext.minsize = 3){
   # Deatils: This function takes in a dataset and then creates a treemap(s).
   
   # Args:
@@ -293,34 +331,39 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
   
   # Debugging
   if(FALSE){
-    data = econ.gear.top
-    type = "econ.gear"
+    data = econ.top
+    type = "econ"
     scenarios = c("baseline", "calibration_test", "no_adaptation", "area+gear+species")
     scenarios = c("area+gear+species")
     spp.modeled = spp.modeled
+    final = TRUE
   }
   
+  # SDM fill -- fairly straight forward
   if(type == "sdm"){
     plot.out<- ggplot(data, aes(area = mean.value, fill = mean.projection.value/100, label = spp.nice)) + 
       geom_treemap(alpha = .8, colour = "white", size = 2) +
       geom_treemap_text(colour = "black", place = "topleft", reflow = T, alpha = .6,
-                        grow = FALSE, family = font.family, size = font.size, min.size = 3) +
-      theme_tufte() + 
+                        grow = FALSE, family = font.family, size = font.size, min.size = treetext.minsize) +
       scale_fill_gradient2(low = gmri.blue, mid = gmri.light.gray, high = gmri.orange, midpoint = 0,
                            na.value = gmri.gray,
                            labels = scales::percent) +
+      ggtitle(paste(data$port.nice[1], "\nProjected relative biomass changes", sep = "")) +
+      theme_tufte() + 
       theme(legend.position = "top", 
             legend.key.width = unit(.5, "in"),
             legend.key.height = unit(.1, "in"),
             legend.title = element_blank(),
             text = element_text(family = font.family, size = font.size),
-            aspect.ratio = .5,
+            aspect.ratio = .4,
             legend.margin=margin(0,0,0,0),
-            legend.box.margin=margin(-5,-5,-5,-5))
+            legend.box.margin=margin(-5,-5,-5,-5)) 
     return(plot.out)
   }
   
-  if(type == "econ" & length(scenarios) > 1){
+  # Now, econ fill -- more complicated with more options based on type == econ or econ.gear, total.value displayed or not, and the length of scenarios (one off)
+  # First some common data processing for type == "econ"
+  if(type == "econ"){
     plot.dat<- data %>%
       filter(., as.character(scenario) %in% scenarios) %>%
       unnest() %>%
@@ -340,7 +383,7 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
     plot.dat<- bind_rows(spp.mods, spp.miss) %>%
       gather(., scenario, TotalLandedValue, -jgs, -spp.alt, -spp.nice, -port.nice)
     
-    # Now, a few different options here...first, just produce one plot for each of the scenarios, save each and also store them in a list. Each plot uses the same min/max value
+    # Now, some general housekeeping: creating list to store results, getting min/max, breaks and label values so that these things are consistent across the different scenarios
     plots.scenarios<- vector("list", length(scenarios))
     names(plots.scenarios)<- scenarios
     min.val<- min(plot.dat$TotalLandedValue, na.rm = TRUE)
@@ -348,6 +391,7 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
     breaks.use<- c(min.val, max.val/4, max.val/2, (max.val/2)+(max.val/4), max.val)
     labels.use<- scales::dollar(breaks.use)
     
+    # Next, ready to plot -- I think this loop piece should work even if it there is just one scenario applied..
     for(j in seq_along(scenarios)){
       # Filter to just scenario of interest
       plot.dat.temp<- plot.dat %>%
@@ -360,130 +404,71 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
       plot.dat.na<- plot.dat.temp %>%
         filter(., is.na(TotalLandedValue))
       
-      # Plot
-      plot.temp<- ggplot(plot.dat.good) + 
-        geom_treemap(aes(area = TotalLandedValue, fill = TotalLandedValue), alpha = .8, colour = "white", size = 2) +
-        scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""), breaks = breaks.use, na.value = "white", labels = labels.use, limits = c(min.val, max.val)) +              
-        geom_treemap_text(aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice), colour = "black", place = "topleft", reflow = T, alpha = .6, grow = FALSE, family = font.family, size = font.size, min.size = 3) +
-        theme_tufte() +     
-        theme(legend.position = "top", 
-              legend.key.width = unit(.5, "in"),
-              legend.key.height = unit(.1, "in"),
-              legend.title = element_blank(),
-              text = element_text(family = font.family, size = font.size),
-              aspect.ratio = .5,
-              legend.margin=margin(0,0,0,0),
-              legend.box.margin=margin(-5,-5,-5,-5),
-              plot.margin = unit(c(1, 0, 2, 0), "cm"))
-      
-      # Add labels for missing species...
-      labs.x<- rep(-0.05, nrow(plot.dat.na))
-      labs.y<- seq(from = -0.1, to = -0.25, length.out = 5)[nrow(plot.dat.na)]
-      labs.df<- data.frame("Species" = plot.dat.na$spp.nice, "x" = labs.x, "y" = labs.y)
-      
-      for(k in seq_along(labs.df$Species)){
+      # Now, the split based on final or not, where final will not show total values in the plot
+      if(final){
+        # Plot
+        plot.temp<- ggplot(plot.dat.good) + 
+          geom_treemap(aes(area = TotalLandedValue, fill = TotalLandedValue), alpha = .8, colour = "white", size = 2) +
+          scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""), breaks = breaks.use[c(1,3,5)], na.value = "white", labels = labels.use[c(1,3,5)], limits = c(min.val, max.val)) +              
+          geom_treemap_text(aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice), colour = "black", place = "topleft", reflow = T, alpha = .6, grow = FALSE, family = font.family, size = font.size, min.size = treetext.minsize) +
+          theme_tufte() +     
+          theme(legend.position = "top", 
+                legend.key.width = unit(.5, "in"),
+                legend.key.height = unit(.1, "in"),
+                legend.title = element_blank(),
+                text = element_text(family = font.family, size = font.size),
+                aspect.ratio = .4,
+                legend.margin=margin(0,0,0,0),
+                legend.box.margin=margin(-5,-5,-5,-5))
+        
+        # Return it and clean up
+        plots.scenarios[[j]]<- plot.temp
+        rm(plot.temp)
+      } else {
+        # Now, plots that would have additional text, including missing species and total values
+        # Plot
+        plot.temp<- ggplot(plot.dat.good) + 
+          geom_treemap(aes(area = TotalLandedValue, fill = TotalLandedValue), alpha = .8, colour = "white", size = 2) +
+          scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""), breaks = breaks.use, na.value = "white", labels = labels.use, limits = c(min.val, max.val)) +              
+          geom_treemap_text(aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice), colour = "black", place = "topleft", reflow = T, alpha = .6, grow = FALSE, family = font.family, size = font.size, min.size = treetext.minsize) +
+          ggtitle(paste(plot.dat.good$port.nice[1], "\n", tolower(scenarios[j]), " landed value", sep = "")) +
+          theme_tufte() +     
+          theme(legend.position = "top", 
+                legend.key.width = unit(.5, "in"),
+                legend.key.height = unit(.1, "in"),
+                legend.title = element_blank(),
+                text = element_text(family = font.family, size = font.size),
+                aspect.ratio = .4,
+                legend.margin=margin(0,0,0,0),
+                legend.box.margin=margin(-5,-5,-5,-5),
+                plot.margin = unit(c(1, 0, 2, 0), "cm"))
+        
+        # Add labels for missing species...
+        labs.x<- rep(-0.05, nrow(plot.dat.na))
+        labs.y<- seq(from = -0.1, to = -0.25, length.out = 5)[nrow(plot.dat.na)]
+        labs.df<- data.frame("Species" = plot.dat.na$spp.nice, "x" = labs.x, "y" = labs.y)
+        
+        for(k in seq_along(labs.df$Species)){
+          plot.temp<- plot.temp +
+            annotation_custom(grob = textGrob(label = paste(labs.df$Species[k], " not modeled", sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = labs.df$y[k], ymax = labs.df$y[k], xmin = labs.df$x[k], xmax = labs.df$x[k]) 
+        }
+        
         plot.temp<- plot.temp +
-          annotation_custom(grob = textGrob(label = paste(labs.df$Species[k], " not modeled", sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = labs.df$y[k], ymax = labs.df$y[k], xmin = labs.df$x[k], xmax = labs.df$x[k]) 
+          annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(plot.dat.good$TotalLandedValue)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = -0.1, ymax = -0.1, xmin = 0.5, xmax = 0.5)
+        
+        plot.out<- ggplot_gtable(ggplot_build(plot.temp))
+        plot.out$layout$clip[plot.out$layout$name == "panel"]<- "off"
+        plots.scenarios[[j]]<- plot.out
+        
+        # Some clean up
+        dev.off()
+        rm(plot.temp, plot.out)
       }
-      
-      plot.temp<- plot.temp +
-        annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(plot.dat.good$TotalLandedValue)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = 1.1, ymax = 1.1, xmin = -0.05, xmax = -0.05)
-
-      plot.out<- ggplot_gtable(ggplot_build(plot.temp))
-      plot.out$layout$clip[plot.out$layout$name == "panel"]<- "off"
-      plots.scenarios[[j]]<- plot.out
-      
-      # Some clean up
-      dev.off()
-      rm(plot.temp, plot.out)
     }
     return(plots.scenarios)
   }
   
-  if(type == "econ" & length(scenarios) == 1){
-    plot.dat<- data %>%
-      filter(., as.character(scenario) %in% scenarios) %>%
-      unnest() %>%
-      spread(., scenario, TotalLandedValue)
-    
-    # Some NA values -- how do we know if this is a species we can't model vs. a species with no landed value in the baseline period?
-    # Modeled species, NA landed value == 0
-    spp.mods<- plot.dat %>%
-      filter(., spp.alt %in% spp.modeled$spp.alt) %>%
-      replace(is.na(.), 0)
-    
-    # Missing species, NA landed value = NA
-    spp.miss<- plot.dat %>%
-      filter(., !spp.alt %in% spp.modeled$spp.alt) 
-    
-    # Join them back and move from wide to long format
-    plot.dat<- bind_rows(spp.mods, spp.miss) %>%
-      gather(., scenario, TotalLandedValue, -jgs, -spp.alt, -spp.nice, -port.nice)
-    
-    # Now, a few different options here...first, just produce one plot for each of the scenarios, save each and also store them in a list. Each plot uses the same min/max value
-    plots.scenarios<- vector("list", length(scenarios))
-    names(plots.scenarios)<- scenarios
-    min.val<- min(plot.dat$TotalLandedValue, na.rm = TRUE)
-    max.val<- max(plot.dat$TotalLandedValue, na.rm = TRUE)
-    breaks.use<- c(min.val, max.val/4, max.val/2, (max.val/2)+(max.val/4), max.val)
-    labels.use<- scales::dollar(breaks.use)
-    
-    # Plotting
-    # Filter to just scenario of interest
-    plot.dat.temp<- plot.dat %>%
-      filter(., scenario == scenarios[j])
-    
-    # Some NA buisiness
-    plot.dat.good<- plot.dat.temp %>%
-      drop_na(TotalLandedValue)
-    
-    plot.dat.na<- plot.dat.temp %>%
-      filter(., is.na(TotalLandedValue))
-    
-    # Plot
-    plot.temp<- ggplot(plot.dat.good) + 
-      geom_treemap(aes(area = TotalLandedValue, fill = TotalLandedValue), alpha = .8, colour = "white", size = 2) +
-      scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""), breaks = breaks.use[c(1,3,5)], na.value = "white", labels = labels.use[c(1,3,5)], limits = c(min.val, max.val)) +              
-      geom_treemap_text(aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice), colour = "black", place = "topleft", reflow = T, alpha = .6, grow = FALSE, family = font.family, size = font.size, min.size = 3) +
-      theme_tufte() +     
-      theme(legend.position = "top", 
-            legend.key.width = unit(.5, "in"),
-            legend.key.height = unit(.1, "in"),
-            legend.title = element_blank(),
-            text = element_text(family = font.family, size = font.size),
-            aspect.ratio = .5,
-            legend.margin=margin(0,0,0,0),
-            legend.box.margin=margin(-5,-5,-5,-5),
-            plot.margin = unit(c(1, 0, 2, 0), "cm"))
-    
-    # Add labels for missing species if necessary
-    if(nrow(plot.dat.na) > 0){
-      labs.x<- rep(-0.05, nrow(plot.dat.na))
-      labs.y<- seq(from = -0.1, to = -0.25, length.out = 5)[nrow(plot.dat.na)]
-      labs.df<- data.frame("Species" = plot.dat.na$spp.nice, "x" = labs.x, "y" = labs.y)
-      
-      for(k in seq_along(labs.df$Species)){
-        plot.temp<- plot.temp +
-          annotation_custom(grob = textGrob(label = paste(labs.df$Species[k], " not modeled", sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = labs.df$y[k], ymax = labs.df$y[k], xmin = labs.df$x[k], xmax = labs.df$x[k]) 
-      }
-      
-      plot.temp<- plot.temp +
-        annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(plot.dat.good$TotalLandedValue)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = labs.df$y[1], ymax = labs.df$y[1], xmin = 0.5, xmax = 0.5)
-    } else {
-      plot.temp<- plot.temp +
-        annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(plot.dat.good$TotalLandedValue)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = -0.1, ymax = -0.1, xmin = 0.5, xmax = 0.5)
-    }
-    
-   
-    
-    plot.out<- ggplot_gtable(ggplot_build(plot.temp))
-    plot.out$layout$clip[plot.out$layout$name == "panel"]<- "off"
-    
-    return(plot.out)
-    
-    rm(plot.temp, plot.out)
-  }
-  
+  # Final option, plots by gear type. 
   if(type == "econ.gear"){
     res<- vector("list", nrow(data))
     
@@ -492,6 +477,8 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
       
       # Check for null
       dat.check<- is.null(plot.dat$TopSpeciesData[[1]])
+      
+      plot.title<- paste(unique(as.character(plot.dat$jgs)), unique(as.character(plot.dat$scenario)), unique(as.character(plot.dat$gear)), sep = "_")
       
       if(dat.check){
         res[[j]]<- NA
@@ -503,29 +490,59 @@ treemap_fill_plot <- function(data, type, scenarios = c("baseline", "calibration
       plot.dat<- plot.dat %>%
         unnest()
       
-      plot.title<- paste(unique(as.character(plot.dat$jgs)), unique(as.character(plot.dat$scenario)), unique(as.character(plot.dat$footprint)), unique(as.character(plot.dat$gear)), sep = "_")
-      
-      plot.out<- ggplot(plot.dat, aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice)) + 
+      plot.temp<- ggplot(plot.dat, aes(area = TotalLandedValue, fill = TotalLandedValue, label = spp.nice)) + 
         geom_treemap(alpha = .8, colour = "white", size = 2) +
-        geom_treemap_text(colour = "black", place = "center", reflow = T, alpha = .6,
-                          grow = FALSE, family = font.family, size = font.size, min.size = 1) +
-        theme_tufte() + 
-        scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""),
-                             breaks = c(min(plot.dat$TotalLandedValue), max(plot.dat$TotalLandedValue) / 2,  max(plot.dat$TotalLandedValue)), 
-                             labels = scales::dollar) +      
+        geom_treemap_text(colour = "black", place = "center", reflow = T, alpha = .6, grow = FALSE, family = font.family, size = font.size, min.size = treetext.minsize) +
+        scale_fill_gradientn(colors = pal.seq.dark, guide_legend(title = ""), breaks = c(min(plot.dat$TotalLandedValue), max(plot.dat$TotalLandedValue) / 2,  max(plot.dat$TotalLandedValue)),labels = scales::dollar) + 
+        ggtitle(paste(plot.dat$port.nice[1], "\n", tolower(plot.dat$scenario), " ", tolower(plot.dat$gear), " landed value", sep = "")) +
+        theme_tufte() +
         theme(legend.position = "top", 
               legend.key.width = unit(.5, "in"),
               legend.key.height = unit(.1, "in"),
               legend.title = element_blank(),
               text = element_text(family = font.family, size = font.size),
-              aspect.ratio = .5,
+              aspect.ratio = .4,
               legend.margin=margin(0,0,0,0),
-              legend.box.margin=margin(-5,-5,-5,-5))
+              legend.box.margin=margin(-5,-5,-5,-5),
+              plot.margin = unit(c(1, 0, 2, 0), "cm"))
+      
+      plot.out<- plot.temp +
+        annotation_custom(grob = textGrob(label = paste("Total Value = ", scales::dollar(sum(plot.dat$TotalLandedValue)), sep = ""), hjust = 0, gp = gpar(fontfamily = font.family, fontsize = font.size-1)), ymin = -0.1, ymax = -0.1, xmin = 0.5, xmax = 0.5)
+      
+      plot.out<- ggplot_gtable(ggplot_build(plot.out))
+      plot.out$layout$clip[plot.out$layout$name == "panel"]<- "off"
       
       res[[j]]<- plot.out
       names(res)[j]<- plot.title
       print(paste(plot.title, " row ", j, " is done!"))
+      
+      # Some clean up
+      dev.off()
+      rm(plot.temp, plot.out)
     }
     return(res)
   }
+}
+
+# SDM bar plot for problem ports
+sdm_bar_plot<- function(data){
+
+  sdm.bar<- ggplot() + 
+    geom_bar(data = data, aes(x = data$spp.nice, y = data$mean.projection.value/100, fill = data$mean.projection.value/100), stat = "identity") + 
+    scale_y_continuous(labels = scales::percent) +
+    scale_fill_gradient2(low = gmri.blue, mid = gmri.light.gray, high = gmri.orange, midpoint = 0, na.value = gmri.gray, labels = scales::percent) +
+    xlab("") +
+    ylab("Percent Change \nin Relative Biomass") + 
+    theme_bw() +
+    theme(legend.title = element_blank(),
+          legend.position = "right", 
+          legend.key.width = unit(.1, "in"),
+          legend.key.height = unit(.2, "in"),
+          text = element_text(family = font.family, size = font.size),
+          aspect.ratio = .4,  
+          axis.line.y = element_line(size = 0.3, color = gmri.gray),
+          axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size, angle = 45, vjust = 1, hjust = 1),
+          axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size),
+          axis.ticks = element_line(color = gmri.gray, size = 0.2))
+  return(sdm.bar)
 }

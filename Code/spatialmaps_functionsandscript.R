@@ -1,37 +1,35 @@
 
 # Preliminaries -----------------------------------------------------------
-library_check<- function(libraries) {
-  ## Details
-  # This function will check for and then either load or install any libraries needed to run subsequent functions
-  
-  # Args:
-  # libraries = Vector of required library names
-  
-  # Returns: NA, just downloads/loads libraries into current work space.
-  
-  ## Start function
-  lapply(libraries, FUN = function(x) {
-    if (!require(x, character.only = TRUE)) {
-      install.packages(x, dependencies = TRUE)
-      library(x, character.only = TRUE)
-    }
-  })
-  ## End function
-}
+# Generating file paths to Mills Lab functions and then data on shared folder in COCA-conf, as well as
+os.use<- .Platform$OS.type
+lab.funcs.path<- switch(os.use,
+                        "unix" = "~/Box/Mills Lab/Functions/",
+                        "windows" = "")
+
+# Source functions -- this is a little clumsy with the output text, but works
+lab.funcs<- list.files(lab.funcs.path, full.names = TRUE)
+sapply(lab.funcs, source)
+
+# Install and load required libraries
+library_check(c("tidyverse", "treemapify", "here", "grid", "cowplot"))
+
+# Shared COCA-conf stem directory
+stem.path<- switch(os.use,
+                   "unix" = "/Volumes/Shared/Research/COCA-conf/",
+                   "windows" = "J:/Research/COCA-conf/")
+
+code.path<- paste(stem.path, "Landings/code/", sep = "")
+summary.data.path<- paste(stem.path, "Landings/summaries/", sep = "")
+econ.path<- paste(stem.path, "Landings/econ ref tables/", sep = "")
+
+# Source common aesthetic file (untouched here, managed by Brian)
+source(paste(code.path, "comm_reports_aesthetics.R", sep = ""))
 
 # Load libraries
 library_check(c("tidyverse", "ggmap", "akima", "sf", "cowplot", "here", "rgeos"))
 
 # Stem directory to shared files
 stem.dir<- "/Volumes/Shared/Research/COCA-conf/SDM and CFDERS Integration/"
-
-# Directory to save outputs
-dropbox.path<- "~/Desktop/"
-out.paths.df<- data.frame("Community" = c("STONINGTON_ME", "PORTLAND_ME", "NEW.BEDFORD_MA", "POINT.JUDITH_RI"), "Path" = paste(dropbox.path, c("stonington/", "portland/", "new bedford/", "point judith/"), sep = ""))
-out.paths.df<- data.frame("Community" = c("STONINGTON_ME", "PORTLAND_ME", "NEW.BEDFORD_MA", "POINT.JUDITH_RI"), "Path" = paste(dropbox.path))
-
-# Source aesthetics
-source("/Volumes/Shared/Research/COCA-conf/Landings/code/comm_reports_aesthetics.R")
 
 # Read in prediction and footprints
 preds.file<- paste(stem.dir, "Data/SDM Projections/SDMPredictions.rds", sep = "")
@@ -65,8 +63,8 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
   if(FALSE){
     preds = preds
     foots = foots
-    comm = "POINT.JUDITH_RI"
-    spp = c("LONGFIN SQUID")
+    comm = "STONINGTON_ME"
+    spp = c("AMERICAN LOBSTER")
     season = "both"
     xlim = c(-76, -65) 
     ylim = c(35, 45)
@@ -92,9 +90,6 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
   
   # Figure plotting over each of the species
   for(i in seq_along(spp)){
-    
-    # Housekeeping
-    out.path.use<- as.character(out.paths.df$Path[which(out.paths.df$Community == comm)])
     
     # Extract projections
     spp.use<- spp[i]
@@ -206,13 +201,13 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
       pred.df.diff.tile<- pred.df.diff[which(keep.preds == 1),]
       
       # Footprint stuff
-      foot.pt.sf<- sf::st_as_sf(pred.df.diff.tile, coords = c("long","lat"))
-      st_crs(foot.pt.sf)<- proj.wgs84
-      foot.poly.sf<- st_make_grid(foot.pt.sf)
-      
-      foot.poly.keep<- sf::st_contains(foot.poly.sf, foot.pt.sf)
-      foot.poly.sub<- foot.poly.sf[which(lengths(foot.poly.keep) != 0)]
-      foot.poly.union<- smooth(st_union(foot.poly.sub), method = "ksmooth")
+      # foot.pt.sf<- sf::st_as_sf(pred.df.diff.tile, coords = c("long","lat"))
+      # st_crs(foot.pt.sf)<- proj.wgs84
+      # foot.poly.sf<- st_make_grid(foot.pt.sf)
+      # 
+      # foot.poly.keep<- sf::st_contains(foot.poly.sf, foot.pt.sf)
+      # foot.poly.sub<- foot.poly.sf[which(lengths(foot.poly.keep) != 0)]
+      # foot.poly.union<- smooth(st_union(foot.poly.sub), method = "ksmooth")
       
       # Arbitrary labeling
       pred.df.base<- pred.df.base %>%
@@ -250,7 +245,7 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
           #scale_fill_gradient(name = "2011-2015\nRelative biomass", low = gmri.light.gray, high = "#797979", breaks = base.breaks.use, labels = base.labels.use, limits = c(0, max(pred.df.base$z))) +
           #scale_fill_gradient(name = "2011-2015\nRelative biomass", low = "#ccece6", high = "#006d2c", breaks = base.breaks.use, labels = base.labels.use, limits = c(0, max(pred.df.base$z))) +
           scale_fill_gradient(name = "2011-2015\nRelative biomass", low = "#dde199", high = "#868d00", breaks = base.breaks.use, labels = base.labels.use, limits = c(0, max(pred.df.base$z))) +
-          geom_tile(data = pred.df.diff.tile, aes(x = long, y = lat), fill = NA, color = "#464646", size = 0.15) +
+          geom_tile(data = pred.df.diff.tile, aes(x = long, y = lat), fill = NA, color = "#464646", size = 0.25) +
           # Update "fill" and "color" to change map color
           geom_map(data = us.states.f, map = us.states.f,
                    aes(map_id = id, group = group),
@@ -259,35 +254,26 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
                    aes(map_id = id, group = group),
                    fill = "white", color = "#797979", alpha = 0.4, size = 0.15) +
           geom_point(data = port.labs, aes(x = Long, y = Lat), size = 0.5, color = gmri.gray, show.legend = FALSE) +
-          ggrepel::geom_label_repel(data = port.labs, aes(x=Long, y=Lat, label=Port_Tidy),
-                                    fill = "white",
-                                    color = "#3a3a3a",
-                                    direction = "both",
-                                    hjust = 1,
-                                    nudge_x = -1.25,
-                                    nudge_y = 2.25,
-                                    size = 2.5,
-                                    label.size = 0.1,
-                                    segment.size = .3) +
-          coord_sf(datum = proj.wgs84) +
+          ggrepel::geom_label_repel(data = port.labs, aes(x=Long, y=Lat, label=Port_Tidy), fill = "white", color = "#3a3a3a", direction = "both", hjust = 1, nudge_x = -1.25, nudge_y = 0.5, size = 6, label.size = 0.1, segment.size = .3, family = font.family) +
+          coord_sf() +
           xlim(xlim) + 
           ylim(ylim) +
           xlab("") +
           ylab("") +
-          theme(legend.position = "right", 
-                text = element_text(family = font.family, size = 4),
+          theme(legend.position = c(0.65, 0.25), 
+                text = element_text(family = font.family, size = font.size),
                 panel.grid.major=element_line(colour="transparent"),
-                axis.line.x = element_line(size = 0.15, color = gmri.gray),
-                axis.line.y = element_line(size = 0.15, color = gmri.gray),
-                axis.text.x = element_text(family = font.family, color = gmri.gray, size = 3),
-                axis.text.y = element_text(family = font.family, color = gmri.gray, size = 3),
-                axis.ticks = element_line(color = gmri.gray, size = 0.1))
+                axis.line.x = element_line(size = 0.3, color = gmri.gray),
+                axis.line.y = element_line(size = 0.3, color = gmri.gray),
+                axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size-1),
+                axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size-1),
+                axis.ticks = element_line(color = gmri.gray, size = 0.5))
         
         plot.out.diff<- ggplot() +
           geom_tile(data = pred.df.diff, aes(x = long, y = lat, fill = z)) +
           #scale_fill_gradient2(name = "Projected\nRelative biomass changes", low = "#2166ac", mid = "#f7f7f7", high = "#b2182b", midpoint = 0, breaks = diff.breaks.use, labels = diff.labels.use, limits = diff.lims) +
           scale_fill_gradient2(name = "Projected\nRelative biomass changes", low = gmri.blue, mid = gmri.light.gray, high = gmri.orange, midpoint = 0, breaks = diff.breaks.use, labels = diff.labels.use, limits = diff.lims) +
-          geom_tile(data = pred.df.diff.tile, aes(x = long, y = lat), fill = NA, color = "#464646", size = 0.15) +
+          geom_tile(data = pred.df.diff.tile, aes(x = long, y = lat), fill = NA, color = "#464646", size = 0.25) +
           # Update "fill" and "color" to change map color
           geom_map(data = us.states.f, map = us.states.f,
                    aes(map_id = id, group = group),
@@ -296,34 +282,23 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
                    aes(map_id = id, group = group),
                    fill = "white", color = "#797979", alpha = 0.4, size = 0.15) +
           geom_point(data = port.labs, aes(x = Long, y = Lat), size = 0.5, color = gmri.gray, show.legend = FALSE) +
-          ggrepel::geom_label_repel(data = port.labs, aes(x=Long, y=Lat, label=Port_Tidy),
-                                    fill = "white",
-                                    color = "#3a3a3a",
-                                    direction = "both",
-                                    hjust = 1,
-                                    nudge_x = -1.25,
-                                    nudge_y = 2.25,
-                                    size = 2.5,
-                                    label.size = 0.1,
-                                    segment.size = .3) +
-          coord_sf(datum = proj.wgs84) +
+          ggrepel::geom_label_repel(data = port.labs, aes(x=Long, y=Lat, label=Port_Tidy), fill = "white", color = "#3a3a3a", direction = "both", hjust = 1, nudge_x = -1.25, nudge_y = 0.5, size = 6, label.size = 0.1, segment.size = .3, family = font.family) +
+          coord_sf() +
           xlim(xlim) + 
           ylim(ylim) +
           xlab("") +
           ylab("") +
-          theme(legend.position = "right", 
-                text = element_text(family = font.family, size = 4),
+          theme(legend.position = c(0.65, 0.25), 
+                text = element_text(family = font.family, size = font.size),
                 panel.grid.major=element_line(colour="transparent"),
-                axis.line.x = element_line(size = 0.15, color = gmri.gray),
-                axis.line.y = element_line(size = 0.15, color = gmri.gray),
-                axis.text.x = element_text(family = font.family, color = gmri.gray, size = 3),
-                axis.text.y = element_text(family = font.family, color = gmri.gray, size = 3),
-                axis.ticks = element_line(color = gmri.gray, size = 0.1))
+                axis.line.x = element_line(size = 0.3, color = gmri.gray),
+                axis.line.y = element_line(size = 0.3, color = gmri.gray),
+                axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size-1),
+                axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size-1),
+                axis.ticks = element_line(color = gmri.gray, size = 0.5))
         
-        
-        plot.out<- plot_grid(plot.out.base, plot.out.diff, nrow = 1, align = "hv")
-        ggsave(paste(out.path.use, spp.use, gear.use, "GMRI.Alabeled.jpg", sep = ""), plot.out.base, width = 3.5, height = 2.25, units = "in")
-        ggsave(paste(out.path.use, spp.use, gear.use, "GMRI.Blabeled.jpg", sep = ""), plot.out.diff, width = 3.5, height = 2.25, units = "in")
+        ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(spp.use, gear.use, "GMRI.Alabeled.png", sep = "")), plot.out.base)
+        ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste(spp.use, gear.use, "GMRI.Blabeled.png", sep = "")), plot.out.diff)
         
         dev.off()
       } else {
@@ -430,7 +405,7 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
               axis.text.y = element_text(family = font.family, color = gmri.gray, size = 3),
               axis.ticks = element_line(color = gmri.gray, size = 0.1))
       
-      ggsave(paste(out.path.use, comm, "GMRI.jpg", sep = ""), plot.out.overview, width = 3.5, height = 2.25, units = "in")
+      ggsave(here(paste("Results/", jgs.ports[i], sep = ""), paste("GMRI.png", sep = "")), plot.out.overview, width = 3.5, height = 2.25, units = "in")
       
     }
 
@@ -443,7 +418,7 @@ comm_report_plot_func<- function(preds = preds, foots = foots, comm = comm.use, 
 # Community and species vector -- these would be pulled from looking at the ecology treemap figure. Also, could work to automate this by having the tree map figure save a dataframe. 
 comm.use<- "STONINGTON_ME"
 spp.use<- c("AMERICAN LOBSTER")
-comm_report_plot_func(preds = preds, foots = foots, comm = comm.use, spp = spp.use, season = "both", xlim = c(-75, -66.5), ylim = c(38, 47.5))
+comm_report_plot_func(preds = preds, foots = foots, comm = comm.use, spp = spp.use, season = "both", xlim = c(-76, -65), ylim = c(38, 46), labels = TRUE)
 
 comm.use<- "PORTLAND_ME"
 spp.use<- c("ATLANTIC HERRING", "AMERICAN LOBSTER", "HAGFISH")
