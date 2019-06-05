@@ -444,7 +444,7 @@ comm_report_plot_func(preds = preds, foots = foots, comm = comm.use, spp = spp.u
 ######
 
 # Species plots for Kathy
-comm<- "POINT JUDITH_RI"
+comm<- "STONINGTON_ME"
 preds = preds
 foots = foots
 season = "both"
@@ -468,8 +468,6 @@ ca.provinces <- gSimplify(ca.provinces, tol = 0.025, topologyPreserve = TRUE)
 
 us.states.f<- fortify(us.states, NAME_1)
 ca.provinces.f<- fortify(ca.provinces, NAME_1)
-
-out.path.use<- "~/Box/Mills Lab/Projects/COCA15/Results/SDMProjectionMaps/"
 
 # Figure plotting over each of the species
 for(i in seq_along(unique(preds$COMNAME))){
@@ -703,7 +701,7 @@ for(i in seq_along(unique(preds$COMNAME))){
   
   
   plot.out<- plot_grid(plot.out.base, plot.out.fut, plot.out.diff, nrow = 1, align = "hv")
-  ggsave(paste(out.path.use, spp.use, "Projections.pdf", sep = ""), plot.out)
+  ggsave(here(paste("Results/", comm, sep = ""), paste(spp.use, "Projections.pdf", sep = "")), plot.out)
 }
 
   
@@ -712,7 +710,7 @@ for(i in seq_along(unique(preds$COMNAME))){
 #########
 
 # Footprints for Kathy
-comm<- "POINT.JUDITH_RI"
+comm<- "STONINGTON_ME"
 foots = foots
 xlim = c(-76, -65) 
 ylim = c(35, 45)
@@ -733,8 +731,6 @@ ca.provinces <- gSimplify(ca.provinces, tol = 0.025, topologyPreserve = TRUE)
 
 us.states.f<- fortify(us.states, NAME_1)
 ca.provinces.f<- fortify(ca.provinces, NAME_1)
-
-out.path.use<- "~/Box/Mills Lab/Projects/COCA15_ClimVuln/Fishing/Footprints/"
 
 # Figure plotting over each of the gear types
 gears<- c("Pot.Trap", "Trawl", "Gillnet", "Other", "Dredge", "Gillnet", "Longline", "Purse.Seine", "All")
@@ -807,7 +803,7 @@ for (i in seq_along(foot.names.all)){
           axis.ticks = element_line(color = gmri.gray, size = 0.1),
           plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "cm"))
   
-  ggsave(paste(out.path.use, foot.names.all[i], "Footprint.pdf", sep = ""), plot.out)
+  ggsave(here(paste("Results/", comm, sep = ""), paste(foot.names.all[i], "Footprint.png", sep = "")), plot.out)
 }
 
 

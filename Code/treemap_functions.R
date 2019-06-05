@@ -31,10 +31,15 @@ cfders_top_spp_func<- function(input.data, top.n, port.name) {
     summarise(TotalMeanValue = sum(Meansppvalue)) 
   
   # Get data for only the top.n species
-  top.spp.landings<- total.landings %>%
-    top_n(., top.n, TotalMeanValue) %>%
-    arrange(desc(TotalMeanValue))
-  
+  if(!is.null(top.n)){
+    top.spp.landings<- total.landings %>%
+      top_n(., top.n, TotalMeanValue) %>%
+      arrange(desc(TotalMeanValue))
+  } else {
+    top.spp.landings<- total.landings %>%
+      arrange(desc(TotalMeanValue))
+  }
+
   # Now, bring back over some of the other info contained in the cfders.by.spp dataset and nice names
   out<- top.spp.landings %>%
     left_join(., input.data, by = c("jgs" = "jgs", "spp.alt" = "spp.alt")) %>%
@@ -364,6 +369,14 @@ treemap_fill_plot<- function(data, type, scenarios = c("baseline", "calibration_
   # Now, econ fill -- more complicated with more options based on type == econ or econ.gear, total.value displayed or not, and the length of scenarios (one off)
   # First some common data processing for type == "econ"
   if(type == "econ"){
+    # Min and max for plotting so these are consistent
+    minmax.df<- data %>%
+      unnest()
+    min.val<- min(minmax.df$TotalLandedValue, na.rm = TRUE)
+    max.val<- max(minmax.df$TotalLandedValue, na.rm = TRUE)
+    breaks.use<- c(min.val, max.val/4, max.val/2, (max.val/2)+(max.val/4), max.val)
+    labels.use<- scales::dollar(breaks.use)
+    
     plot.dat<- data %>%
       filter(., as.character(scenario) %in% scenarios) %>%
       unnest() %>%
@@ -386,10 +399,6 @@ treemap_fill_plot<- function(data, type, scenarios = c("baseline", "calibration_
     # Now, some general housekeeping: creating list to store results, getting min/max, breaks and label values so that these things are consistent across the different scenarios
     plots.scenarios<- vector("list", length(scenarios))
     names(plots.scenarios)<- scenarios
-    min.val<- min(plot.dat$TotalLandedValue, na.rm = TRUE)
-    max.val<- max(plot.dat$TotalLandedValue, na.rm = TRUE)
-    breaks.use<- c(min.val, max.val/4, max.val/2, (max.val/2)+(max.val/4), max.val)
-    labels.use<- scales::dollar(breaks.use)
     
     # Next, ready to plot -- I think this loop piece should work even if it there is just one scenario applied..
     for(j in seq_along(scenarios)){
@@ -525,24 +534,74 @@ treemap_fill_plot<- function(data, type, scenarios = c("baseline", "calibration_
 }
 
 # SDM bar plot for problem ports
-sdm_bar_plot<- function(data){
-
-  sdm.bar<- ggplot() + 
-    geom_bar(data = data, aes(x = data$spp.nice, y = data$mean.projection.value/100, fill = data$mean.projection.value/100), stat = "identity") + 
-    scale_y_continuous(labels = scales::percent) +
-    scale_fill_gradient2(low = gmri.blue, mid = gmri.light.gray, high = gmri.orange, midpoint = 0, na.value = gmri.gray, labels = scales::percent) +
-    xlab("") +
-    ylab("Percent Change \nin Relative Biomass") + 
-    theme_bw() +
-    theme(legend.title = element_blank(),
-          legend.position = "right", 
-          legend.key.width = unit(.1, "in"),
-          legend.key.height = unit(.2, "in"),
-          text = element_text(family = font.family, size = font.size),
-          aspect.ratio = .4,  
-          axis.line.y = element_line(size = 0.3, color = gmri.gray),
-          axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size, angle = 45, vjust = 1, hjust = 1),
-          axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size),
-          axis.ticks = element_line(color = gmri.gray, size = 0.2))
+sdm_bar_plot<- function(data, reg){
+  
+  if(FALSE){
+    data = sdm.filled.l
+    data = sdm.bar.dat.reg
+    reg<- FALSE
+  }
+  
+  if(reg){
+    sdm.bar<- ggplot() + 
+      geom_bar(data = data, aes(x = data$spp.nice, y = data$mean.projection.value/100, fill = data$mean.projection.value/100), stat = "identity") + 
+      scale_y_continuous(labels = scales::percent) +
+      scale_fill_gradient2(low = gmri.blue, mid = gmri.light.gray, high = gmri.orange, midpoint = 0, na.value = gmri.gray, labels = scales::percent) +
+      xlab("") +
+      ylab("Percent Change \nin Relative Biomass") + 
+      theme_bw() +
+      theme(legend.title = element_blank(),
+            legend.position = "right", 
+            legend.key.width = unit(.1, "in"),
+            legend.key.height = unit(.2, "in"),
+            text = element_text(family = font.family, size = font.size),
+            aspect.ratio = .4,  
+            axis.line.y = element_line(size = 0.3, color = gmri.gray),
+            axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size, angle = 45, vjust = 1, hjust = 1),
+            axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size),
+            axis.ticks = element_line(color = gmri.gray, size = 0.2),
+            panel.grid.minor = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(size = .2))
+  } else {
+    data$Scenario<- factor(data$Scenario, levels = c("mean.baseline.value", "mean.projection.value"), labels = c("Original biomass", "Projected relative \nchange in biomass"))
+    data.a<- data[data$Scenario == "Original biomass",]
+    data.b<- data[data$Scenario == "Projected relative \nchange in biomass",]
+    sdm.bar.temp<- ggplot() + 
+      geom_bar(data = data.a, aes(x = data.a$spp.nice, y = data.a$Value), fill = gmri.light.gray, stat = "identity", show.legend = TRUE) + 
+      scale_y_continuous(labels = scales::percent, limits = c(0, (max(data$Value, na.rm = T) + 0.05))) +
+      xlab("") +
+      ylab("Relative Biomass") + 
+      theme_bw() +
+      theme(legend.title = element_blank(),
+            legend.position = "right", 
+            legend.key.width = unit(.1, "in"),
+            legend.key.height = unit(.2, "in"),
+            text = element_text(family = font.family, size = font.size),
+            aspect.ratio = .4,  
+            axis.line.y = element_line(size = 0.3, color = gmri.gray),
+            axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size, angle = 45, vjust = 1, hjust = 1),
+            axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size),
+            axis.ticks = element_line(color = gmri.gray, size = 0.2),
+            panel.grid.minor = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(size = .2))
+    sdm.bar<- sdm.bar.temp +
+      geom_bar(data = data.b, aes(x = data.b$spp.nice, y = data.b$Value), fill = gmri.blue, color = gmri.gray, alpha = 0.2, stat = "identity") +
+      theme_bw() +
+      theme(legend.title = element_blank(),
+            legend.position = "right", 
+            legend.key.width = unit(.1, "in"),
+            legend.key.height = unit(.2, "in"),
+            text = element_text(family = font.family, size = font.size),
+            aspect.ratio = .4,  
+            axis.line.y = element_line(size = 0.3, color = gmri.gray),
+            axis.text.x = element_text(family = font.family, color = gmri.gray, size = font.size, angle = 45, vjust = 1, hjust = 1),
+            axis.text.y = element_text(family = font.family, color = gmri.gray, size = font.size),
+            axis.ticks = element_line(color = gmri.gray, size = 0.2),
+            panel.grid.minor = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(size = .2))
+  }
   return(sdm.bar)
 }
